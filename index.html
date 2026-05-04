@@ -42,6 +42,12 @@ body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-s
 .refresh-btn:hover { opacity: 0.85; }
 .refresh-btn:disabled { opacity: 0.4; cursor: default; }
 .error-msg { font-size: 12px; color: var(--red); font-family: 'DM Mono', monospace; margin-top: 8px; display: none; }
+.chart-wrap { margin-top: 1.5rem; }
+.chart-labels { display: flex; justify-content: space-between; margin-top: 6px; }
+.chart-label { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); }
+.chart-range { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.chart-range span { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); }
+.chart-loading { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); text-align: center; padding: 24px 0; }
 </style>
 </head>
 <body>
@@ -80,13 +86,79 @@ body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-s
     <div class="conv-result" id="usd-out">–</div>
     <span class="conv-label" style="text-align:right">USD</span>
   </div>
+  <hr class="divider">
+  <div class="section-label">30-day history</div>
+  <div class="chart-wrap" id="chart-wrap">
+    <div class="chart-loading" id="chart-loading">● loading chart…</div>
+  </div>
   <div class="footer">
     <div class="updated" id="updated-text">–</div>
-    <button class="refresh-btn" id="refresh-btn" onclick="fetchRate()">Refresh ↻</button>
+    <button class="refresh-btn" id="refresh-btn" onclick="init()">Refresh ↻</button>
   </div>
 </div>
 <script>
 let rate = null;
+
+function getDateStr(daysAgo) {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return d.toISOString().slice(0, 10);
+}
+
+function buildChart(dates, values) {
+  const W = 356, H = 90, PL = 4, PR = 4, PT = 8, PB = 8;
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = max - min || 1;
+  const xStep = (W - PL - PR) / (values.length - 1);
+  const pts = values.map((v, i) => {
+    const x = PL + i * xStep;
+    const y = PT + (1 - (v - min) / range) * (H - PT - PB);
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  });
+  const polyline = pts.join(' ');
+  const firstPt = pts[0].split(',');
+  const lastPt = pts[pts.length - 1].split(',');
+  const fillPts = polyline + ' ' + lastPt[0] + ',' + (H - PB) + ' ' + firstPt[0] + ',' + (H - PB);
+  const trend = values[values.length - 1] >= values[0] ? '#ff5a5a' : '#4bdf8a';
+
+  const startLabel = dates[0].slice(5).replace('-', '/');
+  const endLabel = dates[dates.length - 1].slice(5).replace('-', '/');
+
+  const wrap = document.getElementById('chart-wrap');
+  wrap.innerHTML =
+    '<div class="chart-range">' +
+      '<span>' + min.toFixed(2) + '</span>' +
+      '<span>' + max.toFixed(2) + '</span>' +
+    '</div>' +
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:90px;display:block">' +
+      '<polygon points="' + fillPts + '" fill="' + trend + '" opacity="0.08"/>' +
+      '<polyline points="' + polyline + '" fill="none" stroke="' + trend + '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + lastPt[0] + '" cy="' + lastPt[1] + '" r="3" fill="' + trend + '"/>' +
+    '</svg>' +
+    '<div class="chart-labels">' +
+      '<span class="chart-label">' + startLabel + '</span>' +
+      '<span class="chart-label">' + endLabel + '</span>' +
+    '</div>';
+}
+
+async function fetchChart() {
+  const start = getDateStr(31);
+  const end = getDateStr(1);
+  try {
+    const res = await fetch('https://api.frankfurter.app/' + start + '..' + end + '?from=USD&to=MXN');
+    const data = await res.json();
+    const dates = Object.keys(data.rates).sort();
+    const values = dates.map(d => data.rates[d].MXN);
+    if (dates.length > 1) {
+      buildChart(dates, values);
+    } else {
+      document.getElementById('chart-wrap').innerHTML = '<div class="chart-loading">not enough data</div>';
+    }
+  } catch(e) {
+    document.getElementById('chart-wrap').innerHTML = '<div class="chart-loading">chart unavailable</div>';
+  }
+}
+
 async function fetchRate() {
   const btn = document.getElementById('refresh-btn');
   const badge = document.getElementById('badge');
@@ -131,19 +203,26 @@ async function fetchRate() {
   }
   btn.disabled = false;
 }
+
 function updateConv() {
   if (!rate) return;
   const u = parseFloat(document.getElementById('usd-in').value);
   if (!isNaN(u)) document.getElementById('mxn-out').textContent = (u * rate).toFixed(2);
 }
+
 function updateFromMXN() {
   if (!rate) return;
   const m = parseFloat(document.getElementById('mxn-in').value);
   if (!isNaN(m)) document.getElementById('usd-out').textContent = (m / rate).toFixed(2);
 }
+
+async function init() {
+  await Promise.all([fetchRate(), fetchChart()]);
+}
+
 document.getElementById('usd-in').addEventListener('input', updateConv);
 document.getElementById('mxn-in').addEventListener('input', updateFromMXN);
-fetchRate();
+init();
 </script>
 </body>
 </html>
