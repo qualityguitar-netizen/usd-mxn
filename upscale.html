@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Upscaler</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d0d0d; --surface: #161616; --border: #252525;
+  --text: #f0ede8; --muted: #6b6b6b; --accent: #c8f04b;
+  --red: #ff5a5a; --green: #4bdf8a;
+}
+body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+.card { width: 100%; max-width: 520px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 2rem; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+.title { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: 12px;
+  padding: 2.5rem 1.5rem; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+}
+.drop-zone.drag-over { border-color: var(--accent); background: rgba(200,240,75,0.04); }
+.drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.drop-icon { font-size: 2rem; margin-bottom: 0.75rem; }
+.drop-text { font-size: 13px; color: var(--muted); }
+.drop-text strong { color: var(--text); }
+
+.divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+.section-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+
+.scale-row { display: flex; gap: 8px; margin-bottom: 1.5rem; }
+.scale-btn {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px; color: var(--text);
+  font-family: 'DM Mono', monospace; font-size: 13px;
+  cursor: pointer; transition: border-color 0.15s;
+}
+.scale-btn.active { border-color: var(--accent); color: var(--accent); }
+.scale-btn:hover:not(.active) { border-color: #3a3a3a; }
+
+.preview-wrap { display: none; margin-bottom: 1.5rem; }
+.preview-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; display: flex; justify-content: space-between; }
+.preview-img { width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; }
+
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 1.5rem; }
+.info-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.info-box-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 3px; }
+.info-box-val { font-family: 'DM Mono', monospace; font-size: 13px; }
+
+.action-row { display: flex; gap: 8px; }
+.upscale-btn {
+  flex: 1; background: var(--accent); color: #0d0d0d;
+  border: none; border-radius: 8px; padding: 10px 16px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.upscale-btn:hover { opacity: 0.85; }
+.upscale-btn:disabled { opacity: 0.35; cursor: default; }
+.download-btn {
+  flex: 1; background: transparent; border: 1px solid var(--accent);
+  border-radius: 8px; padding: 10px 16px; color: var(--accent);
+  font-size: 13px; font-weight: 500; cursor: pointer; display: none;
+}
+.download-btn:hover { background: rgba(200,240,75,0.06); }
+
+.status { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 10px; min-height: 16px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <span class="title">Image Upscaler</span>
+    <div class="dot"></div>
+  </div>
+
+  <div class="drop-zone" id="drop-zone">
+    <input type="file" id="file-input" accept="image/*">
+    <div class="drop-icon">🖼</div>
+    <div class="drop-text"><strong>Click to choose</strong> or drag an image here</div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section-label">Scale factor</div>
+  <div class="scale-row">
+    <button class="scale-btn" data-scale="2">2×</button>
+    <button class="scale-btn active" data-scale="3">3×</button>
+    <button class="scale-btn" data-scale="4">4×</button>
+  </div>
+
+  <div class="preview-wrap" id="preview-wrap">
+    <div class="preview-label">
+      <span>Original</span>
+      <span id="orig-size">–</span>
+    </div>
+    <img class="preview-img" id="preview-img" alt="preview">
+    <hr class="divider">
+    <div class="info-grid">
+      <div class="info-box">
+        <div class="info-box-label">Original</div>
+        <div class="info-box-val" id="dim-orig">–</div>
+      </div>
+      <div class="info-box">
+        <div class="info-box-label">Output</div>
+        <div class="info-box-val" id="dim-out">–</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="action-row">
+    <button class="upscale-btn" id="upscale-btn" disabled>Upscale ↑</button>
+    <button class="download-btn" id="download-btn">Download ↓</button>
+  </div>
+  <div class="status" id="status">Load an image to get started.</div>
+</div>
+
+<canvas id="canvas" style="display:none"></canvas>
+
+<script>
+let imgEl = null;
+let scale = 3;
+let outputDataUrl = null;
+let origFilename = 'image';
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const previewWrap = document.getElementById('preview-wrap');
+const previewImg = document.getElementById('preview-img');
+const upscaleBtn = document.getElementById('upscale-btn');
+const downloadBtn = document.getElementById('download-btn');
+const status = document.getElementById('status');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+document.querySelectorAll('.scale-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    scale = parseInt(btn.dataset.scale);
+    if (imgEl) updateDims();
+  });
+});
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) loadFile(fileInput.files[0]);
+});
+
+function loadFile(file) {
+  origFilename = file.name.replace(/\.[^.]+$/, '');
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    imgEl = img;
+    previewImg.src = url;
+    previewWrap.style.display = 'block';
+    document.getElementById('orig-size').textContent = formatBytes(file.size);
+    updateDims();
+    upscaleBtn.disabled = false;
+    downloadBtn.style.display = 'none';
+    outputDataUrl = null;
+    status.textContent = 'Ready. Click Upscale.';
+  };
+  img.src = url;
+}
+
+function updateDims() {
+  document.getElementById('dim-orig').textContent = imgEl.naturalWidth + ' × ' + imgEl.naturalHeight;
+  document.getElementById('dim-out').textContent = (imgEl.naturalWidth * scale) + ' × ' + (imgEl.naturalHeight * scale);
+}
+
+upscaleBtn.addEventListener('click', () => {
+  if (!imgEl) return;
+  upscaleBtn.disabled = true;
+  status.textContent = 'Upscaling…';
+  requestAnimationFrame(() => {
+    const w = imgEl.naturalWidth * scale;
+    const h = imgEl.naturalHeight * scale;
+    canvas.width = w;
+    canvas.height = h;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(imgEl, 0, 0, w, h);
+    outputDataUrl = canvas.toDataURL('image/png');
+    status.textContent = 'Done — ' + w + '×' + h + ' px';
+    downloadBtn.style.display = 'block';
+    upscaleBtn.disabled = false;
+  });
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (!outputDataUrl) return;
+  const a = document.createElement('a');
+  a.href = outputDataUrl;
+  a.download = origFilename + '_' + scale + 'x.png';
+  a.click();
+});
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+}
+</script>
+</body>
+</html>
